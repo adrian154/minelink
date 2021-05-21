@@ -2,6 +2,7 @@ const sharp = require("sharp");
 const MC = require("node-mc-api");
 const fetch = require("node-fetch");
 const Express = require("express");
+const Discord = require("discord.js");
 
 // local deps
 const MCWS = require("./mcws.js");
@@ -11,7 +12,6 @@ const profileCache = {};
 
 const express = Express();
 express.get("/profile", (req, res) => {
-    console.log(profileCache);
     const profile = profileCache[req.query.uuid];
     if(profile) {
         res.setHeader("Content-Type", "image/png");
@@ -27,7 +27,7 @@ express.listen(config.port, () => console.log(`Webend started listening on port 
 const mcServer = new MCWS(config.mcws.host);
 mcServer.waitConnect().then(() => {
     mcServer.auth(config.mcws.clientID, config.mcws.secret).then(() => {
-        console.log("Authed successfully");
+        console.log("Authed successfully");5
     }).catch(console.error);
 });
 
@@ -37,7 +37,11 @@ mcServer.on("chat", async (event) => {
     if(!profileCache[event.uuid]) {
         const skins = await MC.getSkins(event.uuid);
         const resp = await fetch(skins.skinURL);
-        const buf = await sharp(await resp.buffer()).extract({left: 8, top: 8, width: 8, height: 8}).png().toBuffer();
+        const buf = await sharp(await resp.buffer())
+            .extract({left: 8, top: 8, width: 8, height: 8})
+            .resize({width: 256, height: 256, kernel: sharp.kernel.nearest})
+            .png()
+            .toBuffer();
         profileCache[event.uuid] = buf;
     }
 
@@ -53,3 +57,6 @@ mcServer.on("chat", async (event) => {
     });
 
 });
+
+const bot = new Discord.Client();
+bot.login(config.discord.token);
