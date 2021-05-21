@@ -18,6 +18,7 @@ const ignore = () => {};
 
 // ----- misc state
 const profileCache = {};
+let mcChannel, consoleChannel;
 
 // ----- init webend
 const express = Express();
@@ -75,18 +76,29 @@ mcServer.on("chat", async (event) => {
 });
 
 mcServer.on("console", (event) => {
-    if(config.consoleChannel && bot.ready) {
-        const channel = bot.channels.cache.get(config.consoleChannel);
-        if(channel) {
-            channel.send(`\`[${new Date(event.timestamp).toLocaleTimeString()}] [${event.level}] ${event.message.replace(/\u00a7./, "")}\``);
-        }
+    if(consoleChannel && bot.ready) {
+        consoleChannel.send(`\`[${new Date(event.timestamp).toLocaleTimeString()}] [${event.level}] ${event.message.replace(/\u00a7./g, "")}\``);
     }
+});
+
+mcServer.on("death", (event) => {
+    mcChannel.send(`:x: ${event.deathMessage}`);
+});
+
+mcServer.on("join", (event) => {
+    mcChannel.send(`:inbox_tray: ${event.playerName} joined`);
+});
+
+mcServer.on("quit", (event) => {
+    mcChannel.send(`:outbox_tray: ${event.playerName} left`);
 });
 
 // ----- set up bot logic
 bot.on("ready", () => {
     console.log(`Logged in as ${bot.user.tag}`);
     bot.ready = true;
+    mcChannel = bot.channels.cache.get(config.mcChannel);
+    consoleChannel = bot.channels.cache.get(config.consoleChannel);
 });
 
 bot.on("message", (message) => {
@@ -101,10 +113,12 @@ bot.on("message", (message) => {
         if(command === "bindchannel") {
             if(tokens[1] === "mc") {
                 config.mcChannel = message.channel.id;
+                mcChannel = message.channel;
                 message.channel.send("This channel is now bound to the Minecraft server.").catch(ignore);
                 saveConfig();
             } else if(tokens[1] === "console") {
                 config.consoleChannel = message.channel.id;
+                consoleChannel = message.channel;
                 message.channel.send("This channel is now bound to the server console.");
                 saveConfig();
             } else {
@@ -113,11 +127,11 @@ bot.on("message", (message) => {
         }
 
     } else {
-        if(message.channel.id === config.mcChannel) {
+        if(message.channel.id === mcChannel.id) {
             // TODO: deserialize discord format
             const jsonMessage = {text: `[Discord] ${message.author.username}: ${message.content}`};
             mcServer.runCommand(`tellraw @a ${JSON.stringify(jsonMessage)}`);
-        } else if(message.channel.id === config.consoleChannel) {
+        } else if(message.channel.id === consoleChannel.id) {
             mcServer.runCommand(message.content);
         }
     }
