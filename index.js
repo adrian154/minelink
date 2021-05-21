@@ -56,7 +56,7 @@ mcServer.on("chat", async (event) => {
         const resp = await fetch(skins.skinURL);
         const buf = await sharp(await resp.buffer())
             .extract({left: 8, top: 8, width: 8, height: 8})
-            .resize({width: 256, height: 256, kernel: sharp.kernel.nearest})
+            .resize(256, 256, {kernel: sharp.kernel.nearest})
             .png()
             .toBuffer();
         profileCache[event.uuid] = buf;
@@ -82,7 +82,7 @@ mcServer.on("console", (event) => {
 });
 
 mcServer.on("death", (event) => {
-    mcChannel.send(`:x: ${event.deathMessage}`);
+    mcChannel.send(`:skull_crossbones: ${event.deathMessage}`);
 });
 
 mcServer.on("join", (event) => {
