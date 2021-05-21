@@ -78,7 +78,7 @@ mcServer.on("console", (event) => {
     if(config.consoleChannel && bot.ready) {
         const channel = bot.channels.cache.get(config.consoleChannel);
         if(channel) {
-            channel.send("`" + event.message + "`");
+            channel.send(`\`[${new Date(event.timestamp).toLocaleTimeString()}] [${event.level}] ${event.message.replace(/\u00a7./, "")}\``);
         }
     }
 });
@@ -101,9 +101,11 @@ bot.on("message", (message) => {
         if(command === "bindchannel") {
             if(tokens[1] === "mc") {
                 config.mcChannel = message.channel.id;
+                message.channel.send("This channel is now bound to the Minecraft server.").catch(ignore);
                 saveConfig();
             } else if(tokens[1] === "console") {
                 config.consoleChannel = message.channel.id;
+                message.channel.send("This channel is now bound to the server console.");
                 saveConfig();
             } else {
                 message.channel.send("Incorrect arguments. Usage: `-bindchannel mc/console`").catch(ignore);
