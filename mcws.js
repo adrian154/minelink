@@ -3,7 +3,7 @@ const WebSocket = require("ws");
 module.exports = class {
 
     constructor(host) {
-        this.socket = new WebSocket(host);
+        this.socket = new WebSocket("ws://" + host);
         this.requests = {};
         this.eventHandlers = {};
         this.requestID = 0;
