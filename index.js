@@ -127,11 +127,11 @@ bot.on("message", (message) => {
         }
 
     } else {
-        if(message.channel.id === mcChannel.id) {
+        if(message.channel.id === mcChannel?.id) {
             // TODO: deserialize discord format
             const jsonMessage = {text: `[Discord] ${message.author.username}: ${message.content}`};
             mcServer.runCommand(`tellraw @a ${JSON.stringify(jsonMessage)}`);
-        } else if(message.channel.id === consoleChannel.id) {
+        } else if(message.channel.id === consoleChannel?.id) {
             mcServer.runCommand(message.content);
         }
     }
