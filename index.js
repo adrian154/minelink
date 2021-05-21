@@ -48,7 +48,7 @@ bot.login(config.discord.token);
 
 // ----- set up events for mc server
 mcServer.on("chat", async (event) => { 
-    
+
     // fetch profile
     if(!profileCache[event.uuid]) {
         const skins = await MC.getSkins(event.uuid);
@@ -91,6 +91,8 @@ bot.on("ready", () => {
 
 bot.on("message", (message) => {
     
+    if(message.author.bot) return;
+
     if(message.content[0] === "-") {
         
         const tokens = message.content.trim().split(/\s+/);
