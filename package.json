@@ -10,6 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "discord.js": "^12.5.3",
+    "express": "^4.17.1",
     "node": "^16.1.0",
     "node-fetch": "^2.6.1",
     "node-mc-api": "^1.1.4",
