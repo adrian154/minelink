@@ -63,7 +63,7 @@ mcServer.on("chat", async (event) => {
     }
 
     // send webhook
-    fetch("https://discord.com/api/webhooks/845156492256870453/PHpT785X8PGM43ftlC-SQlCwlTMolpM8yszEGxDD8I3l4b-bYTcOYG2t730zLyLC5tNu", {
+    fetch(config.webhookURL, {
         method: "post",
         body: JSON.stringify({
             username: event.playerName,
