@@ -20,6 +20,13 @@ I made Minelink for use with my own server, so it's pretty unwieldy. Some determ
     * For HTTPS support, you will need to use a reverse proxy like nginx. 
 * You are now ready to run the bot with `node index.js`.
 
+**Final Steps**
+* Use `-bindchannel <chanenltype>` to associate channels on your Discord server with various updates.
+    * `mc`: Minecraft chat will be sent to the channel, and messages in the channel will be broaddcast on the Minecraft server.
+    * `console`: Console messages will be sent to the channel, and commands in the channel will be run on the Minecraft server.
+        * **Make sure you manage access to this channel.** Anyone who can send messages here can run commands on the Minecraft server as well as see players' IP addresses.
+    * `status`: Messages indicating when the server starts/shuts down will be sent here.  
+
 If you want to use run this bot with Docker, you can use the publicly available image at [adrian154/minelink](https://hub.docker.com/repository/docker/adrian154/minelink) on Docker Hub. Mount the configuration file as `/app/config.json`.
 
 # Configuration
