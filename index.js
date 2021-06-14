@@ -8,7 +8,6 @@ const Discord = require("discord.js");
 // ----- local deps
 const MCWS = require("./mcws.js");
 const config = require("./config.json");
-const { isBuffer } = require("util");
 
 // ----- utility funcs
 const saveConfig = () => {
@@ -18,20 +17,22 @@ const saveConfig = () => {
 const ignore = () => {};
 
 // ----- misc state
-const profileCache = {};
+const avatarCache = {};
 let mcChannel, consoleChannel, statusChannel;
 
 // ----- init webend
 const express = Express();
-express.get("/profile", (req, res) => {
-    const profile = profileCache[req.query.uuid];
-    if(profile) {
+express.get("/avatar", (req, res) => {
+    const avatar = avatarCache[req.query.uuid];
+    if(avatar) {
         res.setHeader("Content-Type", "image/png");
-        res.setHeader("Content-Length", profile.length);
-        res.send(profile);
-    } else {
-        res.sendStatus(404);
+        res.setHeader("Content-Length", avatar.length);
+        res.send(avatar);
     }
+});
+
+express.use((req, res, next) => {
+    res.sendStatus(404);
 });
 
 express.listen(config.port, () => console.log(`Webend started listening on port ${config.port}`));
@@ -69,17 +70,23 @@ bot.login(config.discord.token);
 // ----- set up events for mc server
 mcServer.on("chat", async (event) => { 
 
-    // fetch profile
-    if(!profileCache[event.uuid]) {
+    // fetch avatar
+    if(!avatarCache[event.uuid]) {
+        
         const skins = await MC.getSkins(event.uuid);
         const resp = await fetch(skins.skinURL);
-        const buf = await sharp(await resp.buffer())
-            .extract({left: 8, top: 8, width: 8, height: 8})
-            .resize(256, 256, {kernel: sharp.kernel.nearest})
-            .png()
-            .toBuffer();
-        profileCache[event.uuid] = buf;
+
+        const skin = await sharp(await resp.buffer());
+
+        const overlay = await skin.extract({left: 40, top: 8, width: 8, height: 8}).png().toBuffer();
+        const smallAvatar = await skin.extract({left: 8, top: 8, width: 8, height: 8}).composite([{input: overlay}]).png().toBuffer();
+        
+        const avatar = sharp(smallAvatar).resize(256, 256, {kernel: sharp.kernel.nearest});
+        avatarCache[event.uuid] = await avatar.png().toBuffer();
+
     }
+
+    console.log(`/avatar?uuid=${event.uuid}`);
 
     // send webhook
     fetch(config.webhookURL, {
@@ -87,7 +94,7 @@ mcServer.on("chat", async (event) => {
         body: JSON.stringify({
             username: event.playerName,
             content: event.message,
-            avatar_url: `${config.hostname}/profile?uuid=${event.uuid}`
+            avatar_url: `${config.hostname}/avatar?uuid=${event.uuid}`
         }),
         headers: {"Content-Type": "application/json"}
     });
@@ -115,6 +122,8 @@ mcServer.on("console", (event) => {
         bufferedLength += message.length;
         if(Date.now() - lastSendTime > 500) {
             flushConsoleBuffer();
+            setTimeout(flushConsoleBuffer, 500);
+        } else {
             setTimeout(flushConsoleBuffer, 500);
         }
     }
