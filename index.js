@@ -8,6 +8,7 @@ const Discord = require("discord.js");
 // ----- local deps
 const MCWS = require("./mcws.js");
 const config = require("./config.json");
+const { isBuffer } = require("util");
 
 // ----- utility funcs
 const saveConfig = () => {
@@ -18,7 +19,7 @@ const ignore = () => {};
 
 // ----- misc state
 const profileCache = {};
-let mcChannel, consoleChannel;
+let mcChannel, consoleChannel, statusChannel;
 
 // ----- init webend
 const express = Express();
@@ -39,11 +40,29 @@ express.listen(config.port, () => console.log(`Webend started listening on port 
 const mcServer = new MCWS(config.mcws.host);
 const bot = new Discord.Client();
 
-mcServer.waitConnect().then(() => {
+const reconnect = () => {
+    if(!mcServer.connected) {
+        if(consoleChannel) consoleChannel.send("Trying to reconnect...").catch(ignore);
+        mcServer.connect();
+        setTimeout(reconnect, 5000);
+    } 
+};
+
+mcServer.on("connect", () => {
     mcServer.auth(config.mcws.clientID, config.mcws.secret).then(() => {
         console.log("Authed successfully");
     }).catch(console.error);
+    if(statusChannel) statusChannel.send(":white_check_mark: Connected to the Minecraft server").catch(ignore);
+    if(consoleChannel) consoleChannel.send("Reconnected to server :)").catch(ignore);
 });
+
+mcServer.on("close", () => {
+    if(statusChannel) statusChannel.send(":x: Lost connection to the Minecraft server. Reconnecting...").catch(ignore);
+    if(consoleChannel) consoleChannel.send("Lost connection to server :(").catch(ignore);
+    reconnect();
+});
+
+mcServer.connect();
 
 bot.login(config.discord.token);
 
@@ -75,9 +94,29 @@ mcServer.on("chat", async (event) => {
 
 });
 
+let consoleBuffer = [], lastSendTime = 0, bufferedLength = 0;
+
+const flushConsoleBuffer = () => {
+    if(consoleChannel && consoleBuffer.length > 0) {
+        consoleChannel.send(consoleBuffer.join("\n"));
+        consoleBuffer = [];
+        bufferedLength = 0;
+        lastSendTime = Date.now();
+    }
+};
+
 mcServer.on("console", (event) => {
     if(consoleChannel && bot.ready) {
-        consoleChannel.send(`\`[${new Date(event.timestamp).toLocaleTimeString()}] [${event.level}] ${event.message.replace(/\u00a7./g, "")}\``);
+        const message = `\`[${new Date(event.timestamp).toLocaleTimeString()}] [${event.level}] ${event.message.replace(/\u00a7./g, "")}\``;
+        if(bufferedLength + message.length > 2000) {
+            flushConsoleBuffer();
+        }
+        consoleBuffer.push(message);
+        bufferedLength += message.length;
+        if(Date.now() - lastSendTime > 500) {
+            flushConsoleBuffer();
+            setTimeout(flushConsoleBuffer, 500);
+        }
     }
 });
 
@@ -99,6 +138,7 @@ bot.on("ready", () => {
     bot.ready = true;
     mcChannel = bot.channels.cache.get(config.mcChannel);
     consoleChannel = bot.channels.cache.get(config.consoleChannel);
+    statusChannel = bot.channels.cache.get(config.statusChannel);
 });
 
 bot.on("message", (message) => {
@@ -119,10 +159,15 @@ bot.on("message", (message) => {
             } else if(tokens[1] === "console") {
                 config.consoleChannel = message.channel.id;
                 consoleChannel = message.channel;
-                message.channel.send("This channel is now bound to the server console.");
+                message.channel.send("This channel is now bound to the server console.").catch(ignore);
+                saveConfig();
+            } else if(tokens[1] === "status") {
+                config.statusChannel = message.channel.id;
+                statusChannel = message.channel;
+                message.channel.send("This channel is now bound for status updates.").catch(ignore);
                 saveConfig();
             } else {
-                message.channel.send("Incorrect arguments. Usage: `-bindchannel mc/console`").catch(ignore);
+                message.channel.send("Incorrect arguments. Usage: `-bindchannel mc/console/status`").catch(ignore);
             }
         }
 
@@ -130,9 +175,11 @@ bot.on("message", (message) => {
         if(message.channel.id === mcChannel?.id) {
             // TODO: deserialize discord format
             const jsonMessage = {text: `[Discord] ${message.author.username}: ${message.content}`};
-            mcServer.runCommand(`tellraw @a ${JSON.stringify(jsonMessage)}`);
+            mcServer.runCommand(`tellraw @a ${JSON.stringify(jsonMessage)}`).catch(ignore);
         } else if(message.channel.id === consoleChannel?.id) {
-            mcServer.runCommand(message.content);
+            if(message.content[0] === "/") {
+                mcServer.runCommand(message.content.slice(1)).catch(ignore);
+            }
         }
     }
 

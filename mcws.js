@@ -3,28 +3,42 @@ const WebSocket = require("ws");
 module.exports = class {
 
     constructor(host) {
-        this.socket = new WebSocket("ws://" + host);
+        this.host = host;
         this.requests = {};
         this.eventHandlers = {};
         this.requestID = 0;
+    }
+
+    event(which, ...params) {
+        if(this.eventHandlers[which]) this.eventHandlers[which](...params);
+    }
+
+    connect() {
+        this.socket = new WebSocket("ws://" + this.host);
+        this.socket.on("open", () => {
+            this.connected = true;
+            this.event("connect");
+        });
+        this.socket.on("error", () => {
+            this.socket.terminate();
+        });
+        this.socket.on("close", () => {
+            if(this.connected) {
+                this.connected = false;
+                this.event("close");
+            }
+        });
         this.socket.on("message", (data) => {
             const message = JSON.parse(data);
-            if(message.requestID && this.requests[message.type]) {
+            if(message.hasOwnProperty("requestID") && this.requests[message.type]) {
                 if(message.error) {
                     this.requests[message.type].reject(message.error);
                 } else {
                     this.requests[message.type].resolve(message);
                 }
-            } else if(this.eventHandlers[message.type]) {
-                this.eventHandlers[message.type](message);
+            } else if(message.type) {
+                this.event(message.type, message);
             }
-        });
-    }
-
-    async waitConnect() {
-        return new Promise((resolve, reject) => {
-            if(this.socket.readyState === WebSocket.OPEN) resolve();
-            this.socket.on("open", () => resolve());
         });
     }
 
@@ -54,6 +68,7 @@ module.exports = class {
     }
 
     request(payload) {
+        if(this.socket.readyState !== WebSocket.OPEN) throw new Error("Not connected");
         return new Promise((resolve, reject) => {
             this.requests[this.requestID++] = {resolve, reject};
             this.socket.send(JSON.stringify(payload));
