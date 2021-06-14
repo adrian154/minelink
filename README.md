@@ -20,7 +20,7 @@ I made Minelink for use with my own server, so it's pretty unwieldy. Some determ
     * For HTTPS support, you will need to use a reverse proxy like nginx. 
 * You are now ready to run the bot with `node index.js`.
 
-If you want to use run this bot with Docker, you can use the publicly available image at [adrian154/minelink](https://hub.docker.com/repository/docker/adrian154/minelink). Mount the configuration file as `/app/config.json`.
+If you want to use run this bot with Docker, you can use the publicly available image at [adrian154/minelink](https://hub.docker.com/repository/docker/adrian154/minelink) on Docker Hub. Mount the configuration file as `/app/config.json`.
 
 # Configuration
 
