@@ -15,7 +15,7 @@
     "node-fetch": "^2.6.1",
     "node-mc-api": "^1.1.4",
     "sharp": "^0.28.2",
-    "ws": "^7.4.5"
+    "ws": "^7.4.6"
   },
   "devDependencies": {},
   "repository": {
