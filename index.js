@@ -1,195 +1,138 @@
-const fs = require("fs");
-const sharp = require("sharp");
-const MC = require("node-mc-api");
-const Express = require("express");
-const fetch = require("node-fetch");
-const Discord = require("discord.js");
+const avatars = require("./avatars.js"),
+      Discord = require("discord.js"),
+      fetch = require("node-fetch"),
+      express = require("express");
 
-// ----- local deps
-const MCWS = require("./mcws.js");
 const config = require("./config.json");
+for(const server of config.servers) {
+    server.broadcastEndpoint = new URL("/chat", server.apiUrl);
+}
 
-// ----- utility funcs
-const saveConfig = () => {
-    fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
-};
+// set up web-facing part of minelink
+const app = express();
+app.use("/avatars", express.static("avatars"));
+app.use(express.json());
 
-const ignore = () => {};
+// receive events from minecraft servers via webhook
+for(const server of config.servers) {
+    app.post(`/webhooks/${server.siphonWebhookId}`, async (req, res) => {
 
-// ----- misc state
-const avatarCache = {};
-let mcChannel, consoleChannel, statusChannel;
-
-// ----- init webend
-const express = Express();
-express.get("/avatar", (req, res) => {
-    const avatar = avatarCache[req.query.uuid];
-    if(avatar) {
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("Content-Length", avatar.length);
-        res.send(avatar);
-    }
-});
-
-express.use((req, res, next) => {
-    res.sendStatus(404);
-});
-
-express.listen(config.port, () => console.log(`Webend started listening on port ${config.port}`));
-
-// ----- init bot/discord link
-const mcServer = new MCWS(config.mcws.host);
-const bot = new Discord.Client();
-
-const reconnect = () => {
-    if(!mcServer.connected) {
-        if(consoleChannel) consoleChannel.send("Trying to reconnect...").catch(ignore);
-        mcServer.connect();
-        setTimeout(reconnect, 5000);
-    } 
-};
-
-mcServer.on("connect", () => {
-    mcServer.auth(config.mcws.clientID, config.mcws.secret).then(() => {
-        console.log("Authed successfully");
-    }).catch(console.error);
-    if(statusChannel) statusChannel.send(":white_check_mark: Connected to the Minecraft server").catch(ignore);
-    if(consoleChannel) consoleChannel.send("Reconnected to server :)").catch(ignore);
-});
-
-mcServer.on("close", () => {
-    if(statusChannel) statusChannel.send(":x: Lost connection to the Minecraft server. Reconnecting...").catch(ignore);
-    if(consoleChannel) consoleChannel.send("Lost connection to server :(").catch(ignore);
-    reconnect();
-});
-
-mcServer.connect();
-
-bot.login(config.discord.token);
-
-// ----- set up events for mc server
-mcServer.on("chat", async (event) => { 
-
-    // fetch avatar
-    if(!avatarCache[event.uuid]) {
+        if(!bot.isReady()) {
+            return;
+        }
         
-        const skins = await MC.getSkins(event.uuid);
-        const resp = await fetch(skins.skinURL);
+        if(req.body.event === "chat") {
+            fetch(server.discordWebhook, {
+                method: "post",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    username: req.body.playerName,
+                    content: req.body.message,
+                    avatar_url: await avatars.getAvatarURL(req.body.uuid)
+                })
+            })   
+        } else if(req.body.event === "player-death") {
+            server.channel?.send(`:skull_crossbones: ${req.body.message}`)
+        } else if(req.body.event === "player-join") {
+            server.channel?.send(`:inbox_tray: ${req.body.playerName} joined`);
+            avatars.refreshAvatar(req.body.uuid);
+        } else if(req.body.event === "quit") {
+            server.channel?.send(`:outbox_tray: ${req.body.playerName} left`)
+        }
 
-        const skin = await sharp(await resp.buffer());
-
-        const overlay = await skin.extract({left: 40, top: 8, width: 8, height: 8}).png().toBuffer();
-        const smallAvatar = await skin.extract({left: 8, top: 8, width: 8, height: 8}).composite([{input: overlay}]).png().toBuffer();
-        
-        const avatar = sharp(smallAvatar).resize(256, 256, {kernel: sharp.kernel.nearest});
-        avatarCache[event.uuid] = await avatar.png().toBuffer();
-
-    }
-
-    console.log(`/avatar?uuid=${event.uuid}`);
-
-    // send webhook
-    fetch(config.webhookURL, {
-        method: "post",
-        body: JSON.stringify({
-            username: event.playerName,
-            content: event.message,
-            avatar_url: `${config.hostname}/avatar?uuid=${event.uuid}`
-        }),
-        headers: {"Content-Type": "application/json"}
     });
+}
 
+app.use((req, res, next) => res.status(404));
+
+app.listen(config.port, () => console.log("Webserver started"));
+
+// set up discord bot
+const bot = new Discord.Client({
+    intents: [
+        Discord.GatewayIntentBits.Guilds,
+        Discord.GatewayIntentBits.GuildMessages,
+        Discord.GatewayIntentBits.MessageContent
+    ]
 });
 
-let consoleBuffer = [], lastSendTime = 0, bufferedLength = 0;
+const BLURPLE = "#8fa8ff";
 
-const flushConsoleBuffer = () => {
-    if(consoleChannel && consoleBuffer.length > 0) {
-        consoleChannel.send(consoleBuffer.join("\n"));
-        consoleBuffer = [];
-        bufferedLength = 0;
-        lastSendTime = Date.now();
+const formatMessage = message => {
+
+    // replace all mentions with formatted text
+    const replacedSections = [
+        [...message.content.matchAll(/<#(\d{17,19})>/g)].map(match => ({match, component: {text: "#" + message.mentions.channels.get(match[1])?.name, color: BLURPLE}})),
+        [...message.content.matchAll(/<@!?(\d{17,19})>/g)].map(match => {
+            const user = message.mentions.users.get(match[1]);
+            return {
+                match, 
+                component: {
+                    text: "@" + user.username, color: BLURPLE,
+                    hoverEvent: {
+                        action: "show_text",
+                        contents: user.tag
+                    }
+                }
+            }
+        }),
+        [...message.content.matchAll(/<@&(\d{17,19})>/g)].map(match => {
+            const role = message.mentions.roles.get(match[1]);
+            return {match, component: {text: "@" + role?.name, color: role?.hexColor}};
+        }),
+        [...message.content.matchAll(/<:(.+):\d{17,19}>/g)].map(match => ({match, component: {text: ":" + match[1] + ":"}}))
+    ].flat();
+
+    const components = [];
+    let index = 0;
+    for(const section of replacedSections.sort((a, b) => a.match.index - b.match.index)) {
+        components.push(message.content.slice(index, section.match.index), section.component);
+        index = section.match.index + section.match[0].length; 
     }
+    components.push(message.content.slice(index, message.content.length));
+
+    return [
+        "", // prevent inheritance
+        {
+            text: `[${message.author.username}]`,
+            color: message.member.displayHexColor,
+            hoverEvent: {
+                action: "show_text",
+                contents: message.author.tag
+            }
+        },
+        " ",
+        ...components
+    ]
+
 };
 
-mcServer.on("console", (event) => {
-    if(consoleChannel && bot.ready) {
-        const message = `\`[${new Date(event.timestamp).toLocaleTimeString()}] [${event.level}] ${event.message.replace(/\u00a7./g, "")}\``;
-        if(bufferedLength + message.length > 2000) {
-            flushConsoleBuffer();
-        }
-        consoleBuffer.push(message);
-        bufferedLength += message.length;
-        if(Date.now() - lastSendTime > 500) {
-            flushConsoleBuffer();
-            setTimeout(flushConsoleBuffer, 500);
-        } else {
-            setTimeout(flushConsoleBuffer, 500);
-        }
-    }
-});
-
-mcServer.on("death", (event) => {
-    mcChannel.send(`:skull_crossbones: ${event.deathMessage}`);
-});
-
-mcServer.on("join", (event) => {
-    mcChannel.send(`:inbox_tray: ${event.playerName} joined`);
-});
-
-mcServer.on("quit", (event) => {
-    mcChannel.send(`:outbox_tray: ${event.playerName} left`);
-});
-
-// ----- set up bot logic
-bot.on("ready", () => {
-    console.log(`Logged in as ${bot.user.tag}`);
-    bot.ready = true;
-    mcChannel = bot.channels.cache.get(config.mcChannel);
-    consoleChannel = bot.channels.cache.get(config.consoleChannel);
-    statusChannel = bot.channels.cache.get(config.statusChannel);
-});
-
-bot.on("message", (message) => {
-    
+bot.on("messageCreate", async message => {
+   
     if(message.author.bot) return;
+    
+    const server = config.servers.find(server => server.channelId == message.channelId);
 
-    if(message.content[0] === "-") {
-        
-        const tokens = message.content.trim().split(/\s+/);
-        const command = tokens[0].slice(1, tokens[0].length);
-        
-        if(command === "bindchannel") {
-            if(tokens[1] === "mc") {
-                config.mcChannel = message.channel.id;
-                mcChannel = message.channel;
-                message.channel.send("This channel is now bound to the Minecraft server.").catch(ignore);
-                saveConfig();
-            } else if(tokens[1] === "console") {
-                config.consoleChannel = message.channel.id;
-                consoleChannel = message.channel;
-                message.channel.send("This channel is now bound to the server console.").catch(ignore);
-                saveConfig();
-            } else if(tokens[1] === "status") {
-                config.statusChannel = message.channel.id;
-                statusChannel = message.channel;
-                message.channel.send("This channel is now bound for status updates.").catch(ignore);
-                saveConfig();
-            } else {
-                message.channel.send("Incorrect arguments. Usage: `-bindchannel mc/console/status`").catch(ignore);
-            }
-        }
-
-    } else {
-        if(message.channel.id === mcChannel?.id) {
-            // TODO: deserialize discord format
-            const jsonMessage = {text: `[Discord] ${message.author.username}: ${message.content}`};
-            mcServer.runCommand(`tellraw @a ${JSON.stringify(jsonMessage)}`).catch(ignore);
-        } else if(message.channel.id === consoleChannel?.id) {
-            if(message.content[0] === "/") {
-                mcServer.runCommand(message.content.slice(1)).catch(ignore);
-            }
-        }
+    if(server) {
+        fetch(server.broadcastEndpoint, {
+            method: "POST",
+            headers: {
+                "Authorization": `Basic ${Buffer.from(`${server.clientId}:${server.key}`).toString("base64")}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(formatMessage(message))
+        }).catch(console.error);
     }
 
 });
+
+bot.on("ready", () => {
+    console.log("Logged in as " + bot.user.tag);
+    for(const server of config.servers) {
+        server.channel = bot.channels.cache.get(server.channelId);
+    }
+});
+
+bot.login(config.botToken);

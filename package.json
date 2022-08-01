@@ -1,29 +1,25 @@
 {
-  "name": "minelink-bot",
+  "name": "minelink",
   "version": "1.0.0",
-  "description": "A Discord-Minecraft bridge",
+  "description": "Yet another Minecraft-Discord bridge",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "adrianz",
-  "license": "MIT",
-  "dependencies": {
-    "discord.js": "^12.5.3",
-    "express": "^4.17.1",
-    "node": "^16.1.0",
-    "node-fetch": "^2.6.1",
-    "node-mc-api": "^1.1.4",
-    "sharp": "^0.28.2",
-    "ws": "^7.4.6"
-  },
-  "devDependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/adrian154/minelink.git"
   },
+  "author": "adrian154",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/adrian154/minelink/issues"
   },
-  "homepage": "https://github.com/adrian154/minelink#readme"
+  "homepage": "https://github.com/adrian154/minelink#readme",
+  "dependencies": {
+    "discord.js": "^14.1.2",
+    "express": "^4.18.1",
+    "node-fetch": "^2.6.7",
+    "sharp": "^0.30.7"
+  }
 }
