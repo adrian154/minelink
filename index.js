@@ -97,7 +97,7 @@ const formatMessage = message => {
         "", // prevent inheritance
         {
             text: `[${message.author.username}]`,
-            color: message.member.displayHexColor,
+            color: message.member.displayHexColor || "#dbdbdb",
             hoverEvent: {
                 action: "show_text",
                 contents: message.author.tag
